@@ -1,0 +1,2 @@
+[console_scripts]
+webagent = webagent.cli:main

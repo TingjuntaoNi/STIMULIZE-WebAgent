@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "stimuluze-webagent"
+version = "0.1.0"
+description = "STIMULIZE WebAgent"
+readme = "README.md"
+requires-python = ">=3.9"
+authors = [{ name = "TingjuntaoNi" }]
+
+[project.scripts]
+webagent = "webagent.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["webagent*"]
+
+[tool.setuptools.package-data]
+webagent = ["**/*.txt", "**/*.json", "**/*.yaml", "**/*.yml", "**/*.png", "**/*.jpg"]

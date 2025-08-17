@@ -1,0 +1,28 @@
+name: webagent
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - pip
+  - numpy
+  - pandas
+  - pymupdf
+  - pillow
+  - pytesseract
+  - fastapi
+  - uvicorn
+  - pydantic
+  - requests
+  - tqdm
+  - pip:
+      - faiss-cpu
+      - weaviate-client
+      - pymilvus
+      - transformers
+      - accelerate
+      - sentence-transformers
+      - openai
+      - huggingface_hub
+      - ragas
+      - evaluate
