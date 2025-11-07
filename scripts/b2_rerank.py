@@ -264,7 +264,7 @@ def rerank_candidates(query: str,
                      top_k: int = 10,
                      use_mmr: bool = True,
                      mmr_lambda: float = 0.7,
-                     reranker_model: str = "BAAI/bge-reranker-base") -> List[Dict]:
+                     reranker_model: str = "model/bge-reranker-base") -> List[Dict]:
     """
     对候选片段进行重排
     

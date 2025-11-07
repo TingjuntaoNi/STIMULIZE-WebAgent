@@ -16,6 +16,8 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional, Tuple
 import sys
 from datetime import datetime
+import torch
+from transformers import AutoModelForCausalLM, AutoTokenizer
 
 # 添加相关模块
 from b1_recall import retrieve_for_query
@@ -114,7 +116,16 @@ class PromptTemplate:
             - If information is insufficient, explain what information is missing and suggest checking relevant pages
             - Answer format: Direct answer + Information sources
 
-            Please provide your answer below: """
+            Output EXACTLY in this format:
+            Answer:
+            <your concise answer here>
+
+            Sources:
+            - Chunk <n> (ID:<id>, Page <page>)
+            - Chunk <n> (ID:<id>, Page <page>)
+
+            <END> 
+            """
 
     
     @staticmethod
@@ -200,8 +211,7 @@ class LocalLLMGenerator(LLMGenerator):
             model_name_or_path: 模型路径或 Hugging Face 名称，例如 "Qwen/Qwen2.5-14B-Instruct"
             device: 设备 (默认自动检测 CUDA)
         """
-        import torch
-        from transformers import AutoModelForCausalLM, AutoTokenizer
+
 
         self.model_name_or_path = model_name_or_path
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
@@ -228,14 +238,14 @@ class LocalLLMGenerator(LLMGenerator):
         if not self.available or self.model is None:
             return "Generation failed: model not loaded."
 
-        import torch
         inputs = self.tokenizer(prompt, return_tensors="pt").to(self.model.device)
         with torch.no_grad():
             outputs = self.model.generate(
                 **inputs,
                 max_new_tokens=max_tokens,
                 do_sample=False,      # 关闭采样以减少幻觉
-                temperature=0.1,      # 保守回答
+                repetition_penalty=1.05,
+                temperature=0.0,      # 保守回答
                 eos_token_id=self.tokenizer.eos_token_id,
                 pad_token_id=self.tokenizer.eos_token_id
             )
@@ -243,7 +253,13 @@ class LocalLLMGenerator(LLMGenerator):
         # 一些模型会把 prompt 回显，裁剪掉
         if text.startswith(prompt):
             text = text[len(prompt):]
+            
+        end_marker = "<END>"
+        if end_marker in text:
+            text = text.split(end_marker, 1)[0].strip()
+        
         return text.strip()
+    
 
     def is_available(self) -> bool:
         """Check if local model loaded successfully"""
@@ -463,4 +479,27 @@ def answer_question(question: str) -> Dict[str, Any]:
 
 
 if __name__ == "__main__":
-    test_generation()
+    from pathlib import Path
+
+    model_path = Path("/inspire/hdd/global_public/public_models/Qwen/Qwen2.5-7B-Instruct")
+
+    if model_path.exists():
+        print(f"[INFO] Using LocalLLMGenerator with model at {model_path}")
+        llm = LocalLLMGenerator(str(model_path))
+    else:
+        print("[WARNING] Local model not found, fallback to MockGenerator.")
+        llm = MockGenerator()
+
+    # 把 llm 传入 RAGGenerator
+    generator = RAGGenerator(llm_generator=llm)
+
+    # 运行测试
+    test_questions = [
+        "How to set up stimulus types in Stimulize?",
+        "How does Stimulize integrate with Qualtrics?",
+    ]
+    for q in test_questions:
+        result = generator.generate_answer(q)
+        print(f"\nQ: {q}\nA: {result['answer']}\n")
+        
+        

@@ -1,0 +1,14 @@
+[
+    {
+        "id": "Q1",
+        "question": "How to set up stimulus types in Stimulize?"
+    },
+    {
+        "id": "Q2",
+        "question": "How to exclude items during the setup of target stimuli in Stimulize?"
+    },
+    {
+        "id": "Q3",
+        "question": "How does Stimulize integrate with Qualtrics?"
+    }
+]
