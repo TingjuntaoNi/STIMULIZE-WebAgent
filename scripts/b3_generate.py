@@ -96,60 +96,62 @@ class PromptTemplate:
         """Get Q&A template"""
         return """You are an intelligent assistant for the STIMULIZE user manual. Please answer user questions strictly based on the provided manual content.
 
-【IMPORTANT CONSTRAINTS】
-1. Only answer based on the provided manual chunks, do not fabricate information
-2. If no relevant information is found in the manual, clearly state "No relevant information found in the manual"
-3. Must cite specific chunk IDs and page numbers when answering
-4. Keep answers concise and accurate, highlighting key information
+            【IMPORTANT CONSTRAINTS】
+            1. Only answer based on the provided manual chunks, do not fabricate information
+            2. If no relevant information is found in the manual, clearly state "No relevant information found in the manual"
+            3. Must cite specific chunk IDs and page numbers when answering
+            4. Keep answers concise and accurate, highlighting key information
 
-【MANUAL CONTENT】
-{context}
+            【MANUAL CONTENT】
+            {context}
 
-【USER QUESTION】
-{question}
+            【USER QUESTION】
+            {question}
 
-【ANSWER REQUIREMENTS】
-- Answer based on the above manual content
-- Cite specific chunk IDs (e.g., "According to Chunk 1 (ID:xxx, Page X)")
-- If information is insufficient, explain what information is missing and suggest checking relevant pages
-- Answer format: Direct answer + Information sources
+            【ANSWER REQUIREMENTS】
+            - Answer based on the above manual content
+            - Cite specific chunk IDs (e.g., "According to Chunk 1 (ID:xxx, Page X)")
+            - If information is insufficient, explain what information is missing and suggest checking relevant pages
+            - Answer format: Direct answer + Information sources
 
-请回答："""
+            Please provide your answer below: """
 
+    
     @staticmethod
     def get_answerability_template() -> str:
         """Get answerability determination template"""
         return """Please determine whether the user's question can be answered based on the following manual content.
 
-【MANUAL CONTENT】
-{context}
+            【MANUAL CONTENT】
+            {context}
 
-【USER QUESTION】
-{question}
+            【USER QUESTION】
+            {question}
 
-【DETERMINATION CRITERIA】
-- Can answer: Manual contains direct or indirect relevant information
-- Cannot answer: Manual contains no relevant information at all
+            【DETERMINATION CRITERIA】
+            - Can answer: Manual contains direct or indirect relevant information
+            - Cannot answer: Manual contains no relevant information at all
 
-Please only answer "Can answer" or "Cannot answer" with a brief explanation."""
+            Please only answer "Can answer" or "Cannot answer" with a brief explanation."""
 
+    
     @staticmethod
     def get_source_summary_template() -> str:
         """Get source summary template"""
         return """Based on the following manual chunk information, provide lookup suggestions for the user:
 
-【RELEVANT CHUNKS】
-{chunks_info}
+            【RELEVANT CHUNKS】
+            {chunks_info}
 
-【USER QUESTION】
-{question}
+            【USER QUESTION】
+            {question}
 
-Please provide:
-1. Most relevant page suggestions
-2. Possible answer-containing section hints
-3. Recommended reading order
+            Please provide:
+            1. Most relevant page suggestions
+            2. Possible answer-containing section hints
+            3. Recommended reading order
 
-Format requirements: Concise and clear, emphasizing page numbers and section names."""
+            Format requirements: Concise and clear, emphasizing page numbers and section names."""
 
 
 class LLMGenerator:
@@ -164,30 +166,88 @@ class LLMGenerator:
         raise NotImplementedError
 
 
-class OpenAIGenerator(LLMGenerator):
-    """OpenAI API generator"""
+# class OpenAIGenerator(LLMGenerator):
+#     """OpenAI API generator"""
     
-    def __init__(self, api_key: str = None, model: str = "gpt-3.5-turbo"):
-        self.api_key = api_key
-        self.model = model
-        if api_key:
-            openai.api_key = api_key
+#     def __init__(self, api_key: str = None, model: str = "gpt-3.5-turbo"):
+#         self.api_key = api_key
+#         self.model = model
+#         if api_key:
+#             openai.api_key = api_key
     
-    def generate(self, prompt: str, max_tokens: int = 1000) -> str:
-        """Generate answer using OpenAI API"""
+#     def generate(self, prompt: str, max_tokens: int = 1000) -> str:
+#         """Generate answer using OpenAI API"""
+#         try:
+#             response = openai.ChatCompletion.create(
+#                 model=self.model,
+#                 messages=[{"role": "user", "content": prompt}],
+#                 max_tokens=max_tokens,
+#                 temperature=0.1
+#             )
+#             return response.choices[0].message.content.strip()
+#         except Exception as e:
+#             return f"Generation failed: {e}"
+    
+#     def is_available(self) -> bool:
+#         return HAS_OPENAI and self.api_key is not None
+
+class LocalLLMGenerator(LLMGenerator):
+    """Local LLM generator (e.g., Qwen, LLaMA, ChatGLM) using transformers"""
+
+    def __init__(self, model_name_or_path: str, device: str = None):
+        """
+        Args:
+            model_name_or_path: 模型路径或 Hugging Face 名称，例如 "Qwen/Qwen2.5-14B-Instruct"
+            device: 设备 (默认自动检测 CUDA)
+        """
+        import torch
+        from transformers import AutoModelForCausalLM, AutoTokenizer
+
+        self.model_name_or_path = model_name_or_path
+        self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+
         try:
-            response = openai.ChatCompletion.create(
-                model=self.model,
-                messages=[{"role": "user", "content": prompt}],
-                max_tokens=max_tokens,
-                temperature=0.1
+            print(f"[LocalLLMGenerator] Loading model: {model_name_or_path} on {self.device}")
+            self.tokenizer = AutoTokenizer.from_pretrained(model_name_or_path, trust_remote_code=True)
+            self.model = AutoModelForCausalLM.from_pretrained(
+                model_name_or_path,
+                torch_dtype=torch.float16 if "cuda" in self.device else torch.float32,
+                device_map="auto" if "cuda" in self.device else None,
+                trust_remote_code=True
             )
-            return response.choices[0].message.content.strip()
+            self.model.eval()
+            self.available = True
+            print("[LocalLLMGenerator] Model loaded successfully.")
         except Exception as e:
-            return f"Generation failed: {e}"
-    
+            print(f"[LocalLLMGenerator] Failed to load model: {e}")
+            self.tokenizer, self.model = None, None
+            self.available = False
+
+    def generate(self, prompt: str, max_tokens: int = 1000) -> str:
+        """Generate text locally using transformers"""
+        if not self.available or self.model is None:
+            return "Generation failed: model not loaded."
+
+        import torch
+        inputs = self.tokenizer(prompt, return_tensors="pt").to(self.model.device)
+        with torch.no_grad():
+            outputs = self.model.generate(
+                **inputs,
+                max_new_tokens=max_tokens,
+                do_sample=False,      # 关闭采样以减少幻觉
+                temperature=0.1,      # 保守回答
+                eos_token_id=self.tokenizer.eos_token_id,
+                pad_token_id=self.tokenizer.eos_token_id
+            )
+        text = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+        # 一些模型会把 prompt 回显，裁剪掉
+        if text.startswith(prompt):
+            text = text[len(prompt):]
+        return text.strip()
+
     def is_available(self) -> bool:
-        return HAS_OPENAI and self.api_key is not None
+        """Check if local model loaded successfully"""
+        return self.available
 
 
 class MockGenerator(LLMGenerator):
